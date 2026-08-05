@@ -1,45 +1,29 @@
-# Kimi K3 full (BF16 + MXFP4 experts) — TP16 on 16× GB10 (sm121), v0-opt-prod image
-#
-# Performance-tuned recipe using the v0-opt-prod image (v0-base + B12X perf
-# env vars + drop-caches cron). Uses B12X_MLA_SPARSE with DSpark speculative
-# decoding and FULL_AND_PIECEWISE CUDAGraph capture.
-#
-# Image: linux/arm64, built for GB10 / sm_121 — will NOT run on x86_64.
-# Prebuilt: docker pull ghcr.io/ciprianveg/gb10-kimi-3:v0-opt-prod
-
+# Kimi K3 full — TP16 on 16× GB10 (sm121), v0-opt-prod image
+# All mods and B12X perf env vars baked into the image. Just run it.
+# Image: linux/arm64, sm_121. Pull: docker pull ghcr.io/ciprianveg/gb10-kimi-3:v0-opt-prod
 
 recipe_version: "1"
 name: kimi-k3-full-tp16-v0-opt-prod
-description: KIMI-K3 full (BF16 + MXFP4 experts), 16× GB10 sm121, TP16, v0-opt-prod image, B12X + DSpark + CUDAGraph
+description: KIMI-K3 full, 16× GB10 sm121, TP16, v0-opt-prod, B12X + DSpark + CUDAGraph
 raw_entrypoint: true
 shared_weights_nfs: true
 cluster_only: true
 
-# v0-opt-prod image — v0-base + B12X performance env vars baked in.
 container: ghcr.io/ciprianveg/gb10-kimi-3:v0-opt-prod
-
-# In-container model path. Bind-mount your host model dir here.
 model: /root/models/Kimi-K3
 
-# Default values for {placeholders} in the command below.
 defaults:
   model_path: /root/models/Kimi-K3
   draft_model_path: /root/models/K3-DSpark-Inferact
 
-# Environment — sm121 / single-node TP=16 cluster tuning.
-# B12X performance env vars are baked into the opt-prod image; only
-# cluster-specific vars are set here.
 env:
   VLLM_EXECUTE_MODEL_TIMEOUT_SECONDS: "10800"
   HF_HOME: /cache/huggingface
   HF_HUB_OFFLINE: "1"
   TRANSFORMERS_OFFLINE: "1"
   VLLM_ALLOW_LONG_MAX_MODEL_LEN: "1"
-
   TORCH_CUDA_ARCH_LIST: "12.0f"
   CUTE_DSL_ARCH: "sm_121a"
-
-  # NCCL / IB tuning for 16-node RoCE v2 fabric
   NCCL_NET: IB
   NCCL_IB_DISABLE: "0"
   NCCL_IB_GID_INDEX: "3"
@@ -52,26 +36,15 @@ env:
   NCCL_MAX_NCHANNELS: "4"
   NCCL_MIN_NCHANNELS: "4"
   OMP_NUM_THREADS: "8"
-
-  # Ray compiled DAG overlap
   VLLM_USE_RAY_COMPILED_DAG_OVERLAP_COMM: "1"
   RAY_CGRAPH_get_timeout: "1800"
   RAY_memory_monitor_refresh_ms: "0"
-
   PYTORCH_CUDA_ALLOC_CONF: expandable_segments:True
-
-  # Cache dirs
   TORCH_EXTENSIONS_DIR: /cache/huggingface/torch_extensions
   TORCHINDUCTOR_CACHE_DIR: /cache/huggingface/torchinductor-cache
   TRITON_CACHE_DIR: /cache/huggingface/triton-cache
   XDG_CACHE_HOME: /cache/huggingface
 
-# vllm serve invocation for KIMI-K3 full, TP16 with B12X + DSpark + CUDAGraph.
-#
-# Same flags as the base recipe, plus:
-#   --async-scheduling: overlap scheduler with GPU execution (opt-prod only).
-#   --block-size 256: matches B12X MLA page size for optimal KV layout.
-#   --no-scheduler-reserve-full-isl: don't reserve full ISL memory per request.
 command: |
   vllm serve {model_path} \
     --served-model-name KIMI-K3 \

@@ -1,59 +1,33 @@
-# Kimi K3 full (BF16 + MXFP4 experts) — TP16 on 16× GB10 (sm121), v0-base image
-#
-# Minimal serving recipe using the v0-base image (local-inference-lab/vllm fork
-# + b12x kernels). B12X performance env vars and operational mods are applied
-# at runtime via the mods: field and env: section below — NOT baked into the
-# image. This lets you inspect and customize before serving.
-#
-# For a batteries-included image with everything baked in, use v0-opt-prod:
-#   kimi-k3-full-tp16-opt-prod.yaml
-#
-# Image: linux/arm64, built for GB10 / sm_121 — will NOT run on x86_64.
-# Prebuilt: docker pull ghcr.io/ciprianveg/gb10-kimi-3:v0-base
-
+# Kimi K3 full — TP16 on 16× GB10 (sm121), v0-base image
+# Mods and B12X perf env vars applied at runtime via mods: field.
+# For baked-in image, use kimi-k3-full-tp16-opt-prod.yaml.
+# Image: linux/arm64, sm_121. Pull: docker pull ghcr.io/ciprianveg/gb10-kimi-3:v0-base
 
 recipe_version: "1"
 name: kimi-k3-full-tp16-v0-base
-description: KIMI-K3 full (BF16 + MXFP4 experts), 16× GB10 sm121, TP16, v0-base image, B12X + DSpark (mods in YAML)
+description: KIMI-K3 full, 16× GB10 sm121, TP16, v0-base, B12X + DSpark (mods in YAML)
 raw_entrypoint: true
 shared_weights_nfs: true
 cluster_only: true
 
-# v0-base image — built from local-inference-lab/vllm fork
-# (codex/hh-kimi-k3-dspark-dcp16-20260804) with b12x 0.15.3 kernels.
-# No perf env vars baked in — see mods: and env: below.
 container: ghcr.io/ciprianveg/gb10-kimi-3:v0-base
-
-# In-container model path. Bind-mount your host model dir here.
 model: /root/models/Kimi-K3
 
-# Runtime mods — applied at container startup via --apply-mod.
-# These are in the gb10-kimi-3 repo under v0/mods/.
-#   drop-caches      — clears FS page cache every 60s (NFS stability on UMA)
-#   b12x-perf-env    — sets 15 B12X performance env vars at startup
 mods: [v0/mods/drop-caches, v0/mods/b12x-perf-env]
 
-# Default values for {placeholders} in the command below.
 defaults:
   model_path: /root/models/Kimi-K3
   draft_model_path: /root/models/K3-DSpark-Inferact
 
-# Environment — sm121 / single-node TP=16 cluster tuning.
-# B12X performance env vars are set by the b12x-perf-env mod at startup;
-# only cluster-specific vars are set here.
 env:
   VLLM_EXECUTE_MODEL_TIMEOUT_SECONDS: "10800"
   HF_HOME: /cache/huggingface
   HF_HUB_OFFLINE: "1"
   TRANSFORMERS_OFFLINE: "1"
   VLLM_ALLOW_LONG_MAX_MODEL_LEN: "1"
-
   VLLM_USE_V2_MODEL_RUNNER: "1"
-
   TORCH_CUDA_ARCH_LIST: "12.0f"
   CUTE_DSL_ARCH: "sm_121a"
-
-  # NCCL / IB tuning for 16-node RoCE v2 fabric
   NCCL_NET: IB
   NCCL_IB_DISABLE: "0"
   NCCL_IB_GID_INDEX: "3"
@@ -66,32 +40,15 @@ env:
   NCCL_MAX_NCHANNELS: "4"
   NCCL_MIN_NCHANNELS: "4"
   OMP_NUM_THREADS: "8"
-
-  # Ray compiled DAG overlap
   VLLM_USE_RAY_COMPILED_DAG_OVERLAP_COMM: "1"
   RAY_CGRAPH_get_timeout: "1800"
   RAY_memory_monitor_refresh_ms: "0"
-
-  # Stability + KV cache gains
   PYTORCH_CUDA_ALLOC_CONF: expandable_segments:True
-
-  # Cache dirs
   TORCH_EXTENSIONS_DIR: /cache/huggingface/torch_extensions
   TORCHINDUCTOR_CACHE_DIR: /cache/huggingface/torchinductor-cache
   TRITON_CACHE_DIR: /cache/huggingface/triton-cache
   XDG_CACHE_HOME: /cache/huggingface
 
-# vllm serve invocation for KIMI-K3 full, TP16 with B12X + DSpark.
-#
-# Key flag choices:
-#   --attention-backend B12X_MLA_SPARSE: B12X custom MLA backend (supports
-#     FULL_AND_PIECEWISE CUDAGraph mode with spec-decode, unlike TritonMLA).
-#   --moe-backend b12x: B12X MoE kernel for MXFP4 experts.
-#   --gpu-memory-utilization 0.90: 0.88 + 0.02 so auto-fit hits ~250k context.
-#   --load-format instanttensor: fast pinned-memory loader (~3 min vs ~20 min).
-#   --generation-config vllm: use vLLM defaults, not model's generation_config.json.
-#   --compilation-config: FULL_AND_PIECEWISE CUDAGraph mode (works with DSpark
-#     under B12X_MLA_SPARSE; TritonMLA would downgrade to NONE).
 command: |
   vllm serve {model_path} \
     --served-model-name KIMI-K3 \
