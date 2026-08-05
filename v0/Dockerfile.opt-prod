@@ -1,0 +1,58 @@
+# syntax=docker/dockerfile:1.6
+# Dockerfile.opt-prod — Performance-tuned overlay on top of v0-base
+#
+# Adds B12X performance env vars, CUDAGraph optimization, and operational
+# stability (drop-caches cron) on top of the v0-base image (which is built
+# from the local-inference-lab/vllm fork with b12x kernels).
+
+ARG BASE_IMAGE=ghcr.io/ciprianveg/gb10-kimi-3:v0-base
+FROM ${BASE_IMAGE}
+
+# ── B12X performance env vars ──────────────────────────────────────────────
+# These enable the B12X custom kernel paths for MLA attention, MoE, and GEMM.
+# Without these, vLLM falls back to stock Triton/Marlin paths (slower).
+ENV VLLM_USE_B12X_WO_PROJECTION=1
+ENV VLLM_USE_B12X_MHC=1
+ENV VLLM_USE_B12X_FP8_GEMM=1
+ENV VLLM_USE_B12X_MOE=1
+ENV VLLM_USE_B12X_SPARSE_INDEXER=1
+
+# ── PCIe allreduce backend ─────────────────────────────────────────────────
+# B12X PCIe allreduce for multi-node TP on GB10 RoCE fabric.
+ENV VLLM_PCIE_ALLREDUCE_BACKEND=b12x
+ENV VLLM_ENABLE_PCIE_ALLREDUCE=1
+
+# ── B12X tuning ────────────────────────────────────────────────────────────
+ENV B12X_MLA_SM120_UNIFIED=1
+ENV B12X_DENSE_SPLITK_TURBO=1
+ENV B12X_W4A16_TC_DECODE=1
+ENV B12X_MOE_FORCE_A8=1
+
+# ── CUDAGraph + compilation ────────────────────────────────────────────────
+# AOT compile for faster startup; disable breakable CUDAGraph (not needed
+# on GB10 with B12X_MLA_SPARSE which supports FULL_AND_PIECEWISE).
+ENV VLLM_USE_AOT_COMPILE=1
+ENV VLLM_USE_BREAKABLE_CUDAGRAPH=0
+ENV VLLM_MEMORY_PROFILER_ESTIMATE_CUDAGRAPH=1
+
+# ── FlashInfer sampler ─────────────────────────────────────────────────────
+ENV VLLM_USE_FLASHINFER_SAMPLER=1
+
+# ── V2 runner (stock vLLM model runner path) ───────────────────────────────
+ENV VLLM_USE_V2_MODEL_RUNNER=1
+
+# ── Operational: drop-caches cron ──────────────────────────────────────────
+# On GB10 UMA, the NFS shard stream fills the page cache, which counts
+# against the same 121 GiB unified pool as CUDA. This cron clears the FS
+# page cache every 60s during weight load to prevent NVRM NV_ERR_NO_MEMORY.
+RUN apt-get update && apt-get install -y --no-install-recommends cron && \
+    rm -rf /var/lib/apt/lists/* && \
+    echo '*/1 * * * * root sync && echo 3 > /proc/sys/vm/drop_caches 2>/dev/null' > /etc/cron.d/drop-caches && \
+    chmod 644 /etc/cron.d/drop-caches
+
+# ── Image metadata ─────────────────────────────────────────────────────────
+ENV GB10_KIMI3_IMAGE=1
+ENV GB10_KIMI3_VARIANT=opt-prod
+LABEL gb10-kimi-3.version="v0"
+LABEL gb10-kimi-3.variant="opt-prod"
+LABEL gb10-kimi-3.base-image="${BASE_IMAGE}"
