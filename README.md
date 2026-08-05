@@ -189,7 +189,6 @@ Ideas, benchmarks, and PRs are welcome. Open an issue at [github.com/ciprianveg/
 - **[Inferact/Kimi-K3-DSpark](https://huggingface.co/Inferact/Kimi-K3-DSpark)** — DSpark drafter model
 - **[moonshotai/Kimi-K3](https://huggingface.co/moonshotai/Kimi-K3)** — the model
 - **[spark-vllm-docker](https://github.com/ciprianveg/spark-vllm-docker)** — the build system and recipe runner
-- **[NVIDIA DGX Spark / GB10 User Forum](https://forums.developer.nvidia.com/t/full-kimi-k3-running-on-16x-gb10-cluster/379174)** — original post and community discussion
 
 ---
 
