@@ -1,9 +1,12 @@
 # Kimi K3 full (BF16 + MXFP4 experts) — TP16 on 16× GB10 (sm121), v0-base image
 #
 # Minimal serving recipe using the v0-base image (local-inference-lab/vllm fork
-# + b12x kernels). Uses B12X_MLA_SPARSE attention backend with DSpark
-# speculative decoding. No API key — set your own via the API_KEY env var
-# or pass --api-key to vllm serve.
+# + b12x kernels). B12X performance env vars and operational mods are applied
+# at runtime via the mods: field and env: section below — NOT baked into the
+# image. This lets you inspect and customize before serving.
+#
+# For a batteries-included image with everything baked in, use v0-opt-prod:
+#   kimi-k3-full-tp16-opt-prod.yaml
 #
 # Image: linux/arm64, built for GB10 / sm_121 — will NOT run on x86_64.
 # Prebuilt: docker pull ghcr.io/ciprianveg/gb10-kimi-3:v0-base
@@ -11,17 +14,24 @@
 
 recipe_version: "1"
 name: kimi-k3-full-tp16-v0-base
-description: KIMI-K3 full (BF16 + MXFP4 experts), 16× GB10 sm121, TP16, v0-base image, B12X + DSpark
+description: KIMI-K3 full (BF16 + MXFP4 experts), 16× GB10 sm121, TP16, v0-base image, B12X + DSpark (mods in YAML)
 raw_entrypoint: true
 shared_weights_nfs: true
 cluster_only: true
 
 # v0-base image — built from local-inference-lab/vllm fork
 # (codex/hh-kimi-k3-dspark-dcp16-20260804) with b12x 0.15.3 kernels.
+# No perf env vars baked in — see mods: and env: below.
 container: ghcr.io/ciprianveg/gb10-kimi-3:v0-base
 
 # In-container model path. Bind-mount your host model dir here.
 model: /root/models/Kimi-K3
+
+# Runtime mods — applied at container startup via --apply-mod.
+# These are in the gb10-kimi-3 repo under v0/mods/.
+#   drop-caches      — clears FS page cache every 60s (NFS stability on UMA)
+#   b12x-perf-env    — sets 15 B12X performance env vars at startup
+mods: [v0/mods/drop-caches, v0/mods/b12x-perf-env]
 
 # Default values for {placeholders} in the command below.
 defaults:
@@ -29,6 +39,8 @@ defaults:
   draft_model_path: /root/models/K3-DSpark-Inferact
 
 # Environment — sm121 / single-node TP=16 cluster tuning.
+# B12X performance env vars are set by the b12x-perf-env mod at startup;
+# only cluster-specific vars are set here.
 env:
   VLLM_EXECUTE_MODEL_TIMEOUT_SECONDS: "10800"
   HF_HOME: /cache/huggingface

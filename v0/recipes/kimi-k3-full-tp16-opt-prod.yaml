@@ -4,8 +4,6 @@
 # env vars + drop-caches cron). Uses B12X_MLA_SPARSE with DSpark speculative
 # decoding and FULL_AND_PIECEWISE CUDAGraph capture.
 #
-# No API key — set your own via the API_KEY env var or pass --api-key.
-#
 # Image: linux/arm64, built for GB10 / sm_121 — will NOT run on x86_64.
 # Prebuilt: docker pull ghcr.io/ciprianveg/gb10-kimi-3:v0-opt-prod
 
